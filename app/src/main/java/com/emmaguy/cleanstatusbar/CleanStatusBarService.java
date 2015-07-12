@@ -5,25 +5,34 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.graphics.PixelFormat;
+import android.os.Build;
 import android.os.IBinder;
 import android.preference.PreferenceManager;
 import android.support.v4.app.NotificationCompat;
 import android.view.Gravity;
 import android.view.WindowManager;
 
-import com.emmaguy.cleanstatusbar.util.StatusBarConfig;
+import com.emmaguy.cleanstatusbar.config.DefaultStatusBarConfig;
+import com.emmaguy.cleanstatusbar.config.KitKatStatusBarConfig;
+import com.emmaguy.cleanstatusbar.config.LollipopStatusBarConfig;
+import com.emmaguy.cleanstatusbar.config.MStatusBarConfig;
+import com.emmaguy.cleanstatusbar.config.StatusBarConfig;
 import com.emmaguy.cleanstatusbar.widgets.StatusBarView;
 
 public class CleanStatusBarService extends Service {
+    public static final int VERSION_CODE_M = 23; // TODO: Update when 'M' is released
     private static final int NOTIFICATION_ID = 1;
+
     private static boolean sIsRunning = false;
 
-    private StatusBarConfig mStatusBarConfig;
-    private StatusBarView mStatusBarView;
-    private NotificationManager mNotificationManager;
+    private static StatusBarView sStatusBarView;
+
     private WindowManager mWindowManager;
+    private StatusBarConfig mStatusBarConfig;
+    private NotificationManager mNotificationManager;
+
+    private CleanStatusBarPreferences mPreferences;
 
     public CleanStatusBarService() {
     }
@@ -31,17 +40,41 @@ public class CleanStatusBarService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
-        sIsRunning = true;
 
         mWindowManager = (WindowManager) getSystemService(Context.WINDOW_SERVICE);
         mNotificationManager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-        mStatusBarView = new StatusBarView(this);
-        mStatusBarConfig = new StatusBarConfig(MainActivity.getAPIValue(getSharedPrefs()), isKitKatGradientEnabled(), getResources(), getAssets());
+        mPreferences = new CleanStatusBarPreferences(PreferenceManager.getDefaultSharedPreferences(this), getResources());
 
-        mStatusBarView.setStatusBarConfig(mStatusBarConfig, getBackgroundColour(), getClockTime(), showWifiIcon(), show3gIcon());
+        sIsRunning = true;
+    }
 
-        mWindowManager.addView(mStatusBarView, getWindowManagerParams());
+    @Override
+    public int onStartCommand(Intent intent, int flags, int startId) {
+        final int apiValue = mPreferences.getApiValue();
+        if (apiValue == VERSION_CODE_M) {
+            mStatusBarConfig = new MStatusBarConfig(getResources(), getAssets(), mPreferences.isLightModeEnabled());
+        } else if (apiValue == Build.VERSION_CODES.LOLLIPOP) {
+            mStatusBarConfig = new LollipopStatusBarConfig(getResources(), getAssets());
+        } else if (apiValue == Build.VERSION_CODES.KITKAT) {
+            mStatusBarConfig = new KitKatStatusBarConfig(getResources(), getAssets(), mPreferences.isKitKatGradientEnabled());
+        } else {
+            mStatusBarConfig = new DefaultStatusBarConfig(getResources(), getAssets());
+        }
+
+        if (sStatusBarView == null) {
+            sStatusBarView = new StatusBarView(this);
+            mWindowManager.addView(sStatusBarView, getWindowManagerParams());
+        }
+        sStatusBarView.setStatusBarConfig(mStatusBarConfig,
+                mPreferences.getBackgroundColour(),
+                mPreferences.getClockTime(),
+                mPreferences.showWifiIcon(),
+                mPreferences.show3gIcon(),
+                mPreferences.showGpsIcon());
+
         showNotification();
+
+        return super.onStartCommand(intent, flags, startId);
     }
 
     private WindowManager.LayoutParams getWindowManagerParams() {
@@ -58,42 +91,20 @@ public class CleanStatusBarService extends Service {
 
     @Override
     public void onDestroy() {
-        super.onDestroy();
         sIsRunning = false;
 
-        if (mStatusBarView != null) {
-            mWindowManager.removeView(mStatusBarView);
+        if (sStatusBarView != null) {
+            mWindowManager.removeView(sStatusBarView);
+            sStatusBarView = null;
         }
         removeNotification();
+
+        super.onDestroy();
     }
 
     @Override
     public IBinder onBind(Intent intent) {
         return null;
-    }
-
-    public String getClockTime() {
-        return getSharedPrefs().getString(MainActivity.PREFS_KEY_CLOCK_TIME, "12:00");
-    }
-
-    public int getBackgroundColour() {
-        return getSharedPrefs().getInt(MainActivity.PREFS_KEY_BACKGROUND_COLOUR, 0);
-    }
-
-    private boolean isKitKatGradientEnabled() {
-        return getSharedPrefs().getBoolean(MainActivity.PREFS_KEY_KIT_KAT_GRADIENT, false);
-    }
-
-    private boolean showWifiIcon() {
-        return getSharedPrefs().getBoolean(MainActivity.PREFS_KEY_SIGNAL_WIFI, false);
-    }
-
-    private boolean show3gIcon() {
-        return getSharedPrefs().getBoolean(MainActivity.PREFS_KEY_SIGNAL_3G, false);
-    }
-
-    private SharedPreferences getSharedPrefs() {
-        return PreferenceManager.getDefaultSharedPreferences(this);
     }
 
     private void showNotification() {
@@ -115,6 +126,6 @@ public class CleanStatusBarService extends Service {
     }
 
     public static boolean isRunning() {
-    	return sIsRunning;
+        return sIsRunning;
     }
 }

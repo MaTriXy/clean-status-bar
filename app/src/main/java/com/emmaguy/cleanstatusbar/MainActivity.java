@@ -1,17 +1,16 @@
 package com.emmaguy.cleanstatusbar;
 
-import android.app.ActionBar;
-import android.app.Activity;
-import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Build;
 import android.os.Bundle;
+import android.preference.CheckBoxPreference;
 import android.preference.ListPreference;
 import android.preference.Preference;
 import android.preference.PreferenceCategory;
 import android.preference.PreferenceFragment;
-import android.text.TextUtils;
+import android.support.v7.app.ActionBar;
+import android.support.v7.app.AppCompatActivity;
 import android.view.Gravity;
 import android.view.ViewGroup;
 import android.widget.CompoundButton;
@@ -19,17 +18,7 @@ import android.widget.Switch;
 
 import com.emmaguy.cleanstatusbar.prefs.TimePreference;
 
-
-public class MainActivity extends Activity {
-    public static final String PREFS_KEY_API_VALUE = "api_level";
-    public static final String PREFS_KEY_CLOCK_TIME = "clock_time";
-    public static final String PREFS_KEY_KIT_KAT_GRADIENT = "enable_kitkat_gradient";
-    public static final String PREFS_KEY_BACKGROUND_COLOUR = "background_colour";
-    public static final String PREFS_KEY_SIGNAL_3G = "signal_3g";
-    public static final String PREFS_KEY_SIGNAL_WIFI = "signal_wifi";
-
-    public static final int VERSION_CODE_L = 21; // TODO: change to Build.VERSION_CODES.L when it's released
-
+public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -45,15 +34,16 @@ public class MainActivity extends Activity {
         masterSwitch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
             public void onCheckedChanged(CompoundButton compoundButton, boolean b) {
+                Intent service = new Intent(MainActivity.this, CleanStatusBarService.class);
                 if (b) {
-                    startService(MainActivity.this);
+                    startService(service);
                 } else {
-                    stopService(MainActivity.this);
+                    stopService(service);
                 }
             }
         });
 
-        final ActionBar bar = getActionBar();
+        final ActionBar bar = getSupportActionBar();
         final ActionBar.LayoutParams lp = new ActionBar.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.gravity = Gravity.RIGHT | Gravity.CENTER_VERTICAL;
         lp.rightMargin = getResources().getDimensionPixelSize(R.dimen.master_switch_margin_right);
@@ -61,24 +51,8 @@ public class MainActivity extends Activity {
         bar.setDisplayShowCustomEnabled(true);
     }
 
-    public static void stopService(Context context) {
-        context.stopService(new Intent(context, CleanStatusBarService.class));
-    }
-
-    public static void startService(Context context) {
-        context.startService(new Intent(context, CleanStatusBarService.class));
-    }
-
-    public static int getAPIValue(SharedPreferences prefs) {
-        String apiValue = prefs.getString(MainActivity.PREFS_KEY_API_VALUE, "");
-        if (!TextUtils.isEmpty(apiValue)) {
-            return Integer.valueOf(apiValue);
-        }
-
-        return MainActivity.VERSION_CODE_L;
-    }
-
     public static class SettingsFragment extends PreferenceFragment implements SharedPreferences.OnSharedPreferenceChangeListener {
+        private CleanStatusBarPreferences mPreferences;
 
         @Override
         public void onCreate(Bundle savedInstanceState) {
@@ -87,19 +61,25 @@ public class MainActivity extends Activity {
             addPreferencesFromResource(R.xml.prefs);
 
             initSummary();
-            updateEnableKitKatGradientOption(getPreferenceManager().getSharedPreferences());
+            mPreferences = new CleanStatusBarPreferences(getPreferenceManager().getSharedPreferences(), getResources());
+
+            updateEnableKitKatGradientOption();
+            updateEnableMLightModeOption();
+            updateTimePreference();
         }
 
         @Override
         public void onResume() {
             super.onResume();
+
             getPreferenceScreen().getSharedPreferences().registerOnSharedPreferenceChangeListener(this);
         }
 
         @Override
         public void onPause() {
-            super.onPause();
             getPreferenceScreen().getSharedPreferences().unregisterOnSharedPreferenceChangeListener(this);
+
+            super.onPause();
         }
 
         @Override
@@ -107,18 +87,35 @@ public class MainActivity extends Activity {
             updatePrefsSummary(findPreference(key));
 
             if (CleanStatusBarService.isRunning()) {
-                stopService(getActivity());
-                startService(getActivity());
+                Intent service = new Intent(getActivity(), CleanStatusBarService.class);
+                getActivity().startService(service);
             }
 
-            if (key.equals(PREFS_KEY_API_VALUE)) {
-                updateEnableKitKatGradientOption(sharedPreferences);
+            if (key.equals(getString(R.string.key_api_level))) {
+                updateEnableKitKatGradientOption();
+                updateEnableMLightModeOption();
+            } else if (key.equals(getString(R.string.key_use_24_hour_format))) {
+                updateTimePreference();
             }
         }
 
-        private void updateEnableKitKatGradientOption(SharedPreferences sharedPreferences) {
-            boolean isKitKat = getAPIValue(sharedPreferences) == Build.VERSION_CODES.KITKAT;
-            findPreference(PREFS_KEY_KIT_KAT_GRADIENT).setEnabled(isKitKat);
+        private void updateTimePreference() {
+            CheckBoxPreference pref = (CheckBoxPreference) findPreference(getString(R.string.key_use_24_hour_format));
+
+            TimePreference timePreference = (TimePreference) findPreference(getString(R.string.key_clock_time));
+            timePreference.setIs24HourFormat(pref.isChecked());
+
+            updatePrefsSummary(timePreference);
+        }
+
+        private void updateEnableKitKatGradientOption() {
+            boolean isKitKat = mPreferences.getApiValue() == Build.VERSION_CODES.KITKAT;
+            findPreference(getString(R.string.key_kit_kat_gradient)).setEnabled(isKitKat);
+        }
+
+        private void updateEnableMLightModeOption() {
+            boolean isM = mPreferences.getApiValue() == CleanStatusBarService.VERSION_CODE_M;
+            findPreference(getString(R.string.key_m_light_status_bar)).setEnabled(isM);
         }
 
         protected void initSummary() {
@@ -149,12 +146,19 @@ public class MainActivity extends Activity {
 
                 int index = lst.findIndexOfValue(currentValue);
                 CharSequence[] entries = lst.getEntries();
+                CharSequence[] entryValues = lst.getEntryValues();
                 if (index >= 0 && index < entries.length) {
-                    pref.setSummary(entries[index]);
+                    // Show info explaining that the small letters e.g. 3G/LTE etc are only shown when WiFi is off - this is standard Android behaviour
+                    boolean currentValueIsOffOrEmpty = currentValue.equals(entryValues[0]) || currentValue.equals(entryValues[1]);
+                    if (pref.getKey().equals(getString(R.string.key_signal_3g)) && !currentValueIsOffOrEmpty) {
+                        pref.setSummary(entries[index] + " - " + getString(R.string.network_icon_info));
+                    } else {
+                        pref.setSummary(entries[index]);
+                    }
                 }
             } else if (pref instanceof TimePreference) {
-                if (pref.getKey().equals(PREFS_KEY_CLOCK_TIME)) {
-                    String time = getPreferenceManager().getSharedPreferences().getString(PREFS_KEY_CLOCK_TIME, TimePreference.DEFAULT_TIME_VALUE);
+                if (pref.getKey().equals(getString(R.string.key_clock_time))) {
+                    String time = ((TimePreference) pref).getTime();
                     pref.setSummary(time);
                 }
             }

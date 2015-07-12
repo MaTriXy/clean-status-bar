@@ -1,3 +1,5 @@
+![banner](images/banner_before_after.png)
+
 Clean Status Bar
 =================================
 
@@ -5,10 +7,13 @@ Tired of Photoshopping out notifications/low battery to make a nice, clean statu
 
 It runs as a service, so you can swap to other apps to take screenshots.
 
-|  ![before](https://raw.githubusercontent.com/emmaguy/clean-status-bar/master/images/before.png) | ![after](https://raw.githubusercontent.com/emmaguy/clean-status-bar/master/images/after.png) |
-|---|---|
+<img src="images/before.png" width="30%" />
+<img src="images/after.png" width="30%" />
+<img src="images/m-light.png" width="30%" />
 
 App available [here](https://play.google.com/store/apps/details?id=com.emmaguy.cleanstatusbar)
+
+[![Build Status](https://travis-ci.org/emmaguy/clean-status-bar.png)](https://travis-ci.org/emmaguy/clean-status-bar)
 
 License
 --------
